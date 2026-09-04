@@ -27,7 +27,11 @@ jobs:
       - run: npm run build
       - name: SPA fallback
         run: cp dist/index.html dist/404.html
+      # enablement lets the workflow's own GITHUB_TOKEN turn Pages on,
+      # avoiding a manual trip to Settings -> Pages.
       - uses: actions/configure-pages@v5
+        with:
+          enablement: true
       - uses: actions/upload-pages-artifact@v3
         with:
           path: dist
