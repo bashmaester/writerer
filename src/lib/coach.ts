@@ -115,7 +115,8 @@ function budgetedDocs(docs: RefDoc[], budget: number): string {
           text.slice(0, Math.floor(share * 0.7)) +
           `\n\n…[trimmed ${text.length - share} chars]…\n\n` +
           text.slice(-Math.floor(share * 0.3))
-      return `<document role="${d.role}" name="${d.name}">\n${text}\n</document>`
+      const src = d.sourceUrl ? ` source="${d.sourceUrl}"` : ''
+      return `<document role="${d.role}" name="${d.name}"${src}>\n${text}\n</document>`
     })
     .join('\n\n')
 }

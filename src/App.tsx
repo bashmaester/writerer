@@ -12,6 +12,7 @@ import {
   wordCount,
 } from './lib/files'
 import { loadProject, loadSettings, saveProject, saveSettings, uid, defaultProject } from './lib/store'
+import { fetchUrlAsDoc } from './lib/fetchUrl'
 import Settings from './components/Settings'
 import Markdown from './components/Markdown'
 
@@ -29,6 +30,7 @@ export default function App() {
   const [note, setNote] = useState('')
   const [tab, setTab] = useState<'draft' | 'refs'>('draft')
   const [importing, setImporting] = useState(false)
+  const [urlStatus, setUrlStatus] = useState('')
   const abortRef = useRef<AbortController | null>(null)
   const feedRef = useRef<HTMLDivElement>(null)
 
@@ -75,6 +77,40 @@ export default function App() {
     } else {
       patchProject({ docs: [...project.docs, ...added] })
       setTab('refs')
+    }
+  }
+
+  async function ingestUrl(rawUrl: string, role: DocRole) {
+    setImporting(true)
+    setError('')
+    setUrlStatus('Fetching…')
+    try {
+      const page = await fetchUrlAsDoc(rawUrl, setUrlStatus)
+      const doc: RefDoc = {
+        id: uid(),
+        name: page.title,
+        role,
+        mime: 'text/markdown',
+        text: page.text,
+        words: wordCount(page.text),
+        addedAt: Date.now(),
+        include: true,
+        sourceUrl: page.url,
+      }
+      if (role === 'draft') {
+        patchProject({ draft: page.text })
+        setTab('draft')
+      } else {
+        patchProject({ docs: [...project.docs, doc] })
+        setTab('refs')
+      }
+      setUrlStatus(`Imported ${doc.words.toLocaleString()} words${page.via !== 'direct' ? ` via ${page.via}` : ''}.`)
+      setTimeout(() => setUrlStatus(''), 4000)
+    } catch (e: any) {
+      setError(e?.message ?? String(e))
+      setUrlStatus('')
+    } finally {
+      setImporting(false)
     }
   }
 
@@ -240,8 +276,10 @@ export default function App() {
           <DropZone
             label="Drop guidelines, samples, templates, rubrics — PDF, DOCX, MD, TXT, HTML…"
             onFiles={(f, role) => ingest(f, role)}
+            onUrl={(u, role) => ingestUrl(u, role)}
+            busy={importing}
+            status={urlStatus}
           />
-          {importing && <p className="hint">Extracting text…</p>}
 
           <ul className="doclist">
             {project.docs.map((d) => (
@@ -258,10 +296,23 @@ export default function App() {
                       })
                     }
                   />
-                  <span className="doc-name" title={d.name}>
+                  <span className="doc-name" title={d.sourceUrl ?? d.name}>
+                    {d.sourceUrl && <span className="src-badge" title={d.sourceUrl}>link</span>}
                     {d.name}
                   </span>
                 </label>
+                {d.sourceUrl && (
+                  <a className="doc-src" href={d.sourceUrl} target="_blank" rel="noreferrer">
+                    {(() => {
+                      try {
+                        return new URL(d.sourceUrl).hostname.replace(/^www\./, '')
+                      } catch {
+                        return d.sourceUrl
+                      }
+                    })()}
+                     ↗
+                  </a>
+                )}
                 <div className="row">
                   <select
                     value={d.role}
@@ -490,12 +541,27 @@ export default function App() {
 function DropZone({
   label,
   onFiles,
+  onUrl,
+  busy,
+  status,
 }: {
   label: string
   onFiles: (files: FileList | File[], role: DocRole) => void
+  onUrl: (url: string, role: DocRole) => void
+  busy: boolean
+  status: string
 }) {
   const [role, setRole] = useState<DocRole>('guideline')
   const [over, setOver] = useState(false)
+  const [url, setUrl] = useState('')
+
+  const submitUrl = () => {
+    const v = url.trim()
+    if (!v || busy) return
+    onUrl(v, role)
+    setUrl('')
+  }
+
   return (
     <div
       className={'drop' + (over ? ' over' : '')}
@@ -507,10 +573,14 @@ function DropZone({
       onDrop={(e) => {
         e.preventDefault()
         setOver(false)
-        if (e.dataTransfer.files.length) onFiles(e.dataTransfer.files, role)
+        if (e.dataTransfer.files.length) return onFiles(e.dataTransfer.files, role)
+        // Dragging a link or selected text from another tab.
+        const dropped = e.dataTransfer.getData('text/uri-list') || e.dataTransfer.getData('text/plain')
+        if (dropped && /^https?:\/\//i.test(dropped.trim())) onUrl(dropped.trim(), role)
       }}
     >
       <p>{label}</p>
+
       <div className="row">
         <select value={role} onChange={(e) => setRole(e.target.value as DocRole)}>
           {ROLES.map((r) => (
@@ -530,6 +600,26 @@ function DropZone({
           />
         </label>
       </div>
+
+      <div className="url-row">
+        <input
+          type="url"
+          placeholder="…or paste a URL: blog post, style guide, docs page"
+          value={url}
+          disabled={busy}
+          onChange={(e) => setUrl(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') {
+              e.preventDefault()
+              submitUrl()
+            }
+          }}
+        />
+        <button className="ghost sm" disabled={busy || !url.trim()} onClick={submitUrl}>
+          {busy ? '…' : 'Add'}
+        </button>
+      </div>
+      {(busy || status) && <p className="hint">{status || 'Extracting text…'}</p>}
     </div>
   )
 }

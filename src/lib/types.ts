@@ -38,6 +38,8 @@ export interface RefDoc {
   words: number
   addedAt: number
   include: boolean
+  /** Set when the document was imported from a web page. */
+  sourceUrl?: string
 }
 
 export interface ChatMsg {

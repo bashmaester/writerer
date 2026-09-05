@@ -17,7 +17,7 @@ Everything runs in the browser. Documents never leave your machine except as con
 - **Editable critique group.** Developmental Editor, Line Editor, Target Reader, Rubric Hawk, Skeptic — rename them, rewrite their briefs, add your own.
 - **Free-form chat** with the coach, with the full project context attached.
 - **Any provider**: OpenRouter, Google Gemini, Groq, Cerebras, NVIDIA NIM, GitHub Models, Mistral, OpenAI, Anthropic, Ollama, LM Studio, any OpenAI-compatible endpoint, and fully offline in-browser **WebGPU** models via WebLLM. Responses stream token by token.
-- **Import** PDF, DOCX, Markdown, plain text, HTML, RTF, CSV, JSON. **Export** any draft or piece of feedback as Markdown, TXT, DOCX, PDF or HTML.
+- **Import** PDF, DOCX, Markdown, plain text, HTML, RTF, CSV, JSON — **or paste a URL** to pull in a blog post, style guide or docs page. **Export** any draft or piece of feedback as Markdown, TXT, DOCX, PDF or HTML.
 - Auto-saves your project to `localStorage`.
 
 ## Run it
@@ -51,6 +51,22 @@ Writerer is backendless, so every call is made **by your browser**. That means t
 | **Ollama / LM Studio** | free & local | ⚙️ needs CORS setup | `http://localhost:11434/v1` · `:1234/v1` |
 
 GitHub Models needs a PAT with the **`models:read`** scope. Gemini keys come from [AI Studio](https://aistudio.google.com/apikey).
+
+### Importing references from the web
+
+Paste a URL into the reference panel (or drag a link in from another tab) to add a blog post, style guide or documentation page as reference material. Nav bars, headers, footers, sidebars, cookie notices and comment threads are stripped; headings, lists, tables, quotes and code survive as Markdown. Linked PDFs are detected and parsed as PDFs.
+
+Because Writerer has no backend, the browser cannot fetch most sites directly — they don't send CORS headers. So it tries several routes in order and keeps the first that yields usable text:
+
+1. **Direct fetch** — works for CORS-open sites (raw.githubusercontent.com, most APIs, many docs sites)
+2. **`r.jina.ai`** — a reader service that returns clean Markdown
+3. **Generic CORS proxies** — `allorigins`, `corsproxy.io`, `codetabs`, whose HTML is converted locally
+
+Imported documents keep a link back to their source, and the model is told the URL so it can cite it.
+
+**Privacy:** when a fallback route is used, the URL you're importing passes through that third-party service. Nothing else about your project is sent. If that matters, import sensitive material as a file instead.
+
+Pages behind a login, hard bot-blocking, or pure client-side JavaScript rendering may still fail — the error lists what was tried. Workaround: copy the text and paste it in, or save the page as PDF and upload that.
 
 ### Fixing the Ollama CORS error
 
