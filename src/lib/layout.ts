@@ -1,5 +1,8 @@
 import { useCallback, useEffect, useState } from 'react'
 
+/** off = editor only, split = editor + live render, only = rendered page. */
+export type PreviewMode = 'off' | 'split' | 'only'
+
 export interface LayoutState {
   left: boolean
   right: boolean
@@ -12,6 +15,9 @@ export interface LayoutState {
   fontSize: number
   /** Keep the caret line vertically centred while typing. */
   typewriter: boolean
+  preview: PreviewMode
+  /** Keep the rendered pane scrolled in step with the editor. */
+  syncScroll: boolean
 }
 
 const KEY = 'writerer.layout.v1'
@@ -26,6 +32,8 @@ export const DEFAULT_LAYOUT: LayoutState = {
   serif: true,
   fontSize: 16,
   typewriter: false,
+  preview: 'split',
+  syncScroll: true,
 }
 
 export const MIN_W = 210
@@ -55,7 +63,7 @@ export function useLayout() {
     [],
   )
   const toggle = useCallback(
-    (k: 'left' | 'right' | 'outline' | 'zen' | 'serif' | 'typewriter') =>
+    (k: 'left' | 'right' | 'outline' | 'zen' | 'serif' | 'typewriter' | 'syncScroll') =>
       setLayout((l) => ({ ...l, [k]: !l[k] })),
     [],
   )

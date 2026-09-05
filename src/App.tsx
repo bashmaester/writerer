@@ -19,6 +19,7 @@ import Settings from './components/Settings'
 import Markdown from './components/Markdown'
 import PasteNote from './components/PasteNote'
 import Outline from './components/Outline'
+import Preview from './components/Preview'
 import SkillsPanel from './components/Skills'
 import type { Skill } from './lib/skills/types'
 import { loadSkills, saveSkills } from './lib/skills/store'
@@ -42,6 +43,8 @@ export default function App() {
   const [showPaste, setShowPaste] = useState(false)
   const [editDoc, setEditDoc] = useState<RefDoc | null>(null)
   const [caretLine, setCaretLine] = useState(0)
+  const [editorRatio, setEditorRatio] = useState<number | null>(null)
+  const previewDriving = useRef(false)
   const [skills, setSkills] = useState<Skill[]>(loadSkills)
   const [showSkills, setShowSkills] = useState(false)
   const projectRef = useRef(project)
@@ -96,11 +99,14 @@ export default function App() {
       } else if (k === ',') {
         e.preventDefault()
         setShowSettings(true)
+      } else if (k === 'p') {
+        e.preventDefault()
+        set('preview', layout.preview === 'split' ? 'off' : 'split')
       }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [layout.zen, set, toggle])
+  }, [layout.zen, layout.preview, set, toggle])
 
   const dragLeft = useDragResize('left', layout.leftW, (w) => set('leftW', w))
   const dragRight = useDragResize('right', layout.rightW, (w) => set('rightW', w))
@@ -602,6 +608,19 @@ export default function App() {
                   Context
                 </button>
                 <span className="tb-spacer" />
+                {tab === 'draft' && (
+                  <div className="seg" title="Live preview (⌘P)">
+                    {(['off', 'split', 'only'] as const).map((m) => (
+                      <button
+                        key={m}
+                        className={'seg-b' + (layout.preview === m ? ' on' : '')}
+                        onClick={() => set('preview', m)}
+                      >
+                        {m === 'off' ? 'write' : m === 'split' ? 'split' : 'read'}
+                      </button>
+                    ))}
+                  </div>
+                )}
                 <label className="ghost-file" title="Upload a draft">
                   open
                   <input
@@ -631,21 +650,49 @@ export default function App() {
             )}
 
             {tab === 'draft' ? (
-              <textarea
-                ref={editorRef}
-                className={'editor' + (layout.serif ? ' serif' : ' mono')}
-                style={{ fontSize: layout.fontSize }}
-                placeholder="Write."
-                spellCheck
-                value={project.draft}
-                onChange={(e) => {
-                  patchProject({ draft: e.target.value })
-                  syncCaret()
-                }}
-                onClick={syncCaret}
-                onKeyUp={syncCaret}
-                onSelect={syncCaret}
-              />
+              <div className={'writing-area preview-' + layout.preview}>
+                {layout.preview !== 'only' && (
+                  <textarea
+                    ref={editorRef}
+                    className={'editor' + (layout.serif ? ' serif' : ' mono')}
+                    style={{ fontSize: layout.fontSize }}
+                    placeholder="Write."
+                    spellCheck
+                    value={project.draft}
+                    onChange={(e) => {
+                      patchProject({ draft: e.target.value })
+                      syncCaret()
+                    }}
+                    onClick={syncCaret}
+                    onKeyUp={syncCaret}
+                    onSelect={syncCaret}
+                    onScroll={(e) => {
+                      if (!layout.syncScroll || previewDriving.current) return
+                      const el = e.currentTarget
+                      const max = el.scrollHeight - el.clientHeight
+                      if (max > 0) setEditorRatio(el.scrollTop / max)
+                    }}
+                  />
+                )}
+                {layout.preview !== 'off' && (
+                  <Preview
+                    text={project.draft}
+                    fontSize={layout.fontSize}
+                    serif={layout.serif}
+                    scrollRatio={layout.preview === 'split' && layout.syncScroll ? editorRatio : null}
+                    onScrollRatio={(r) => {
+                      // Let the preview drive the editor too, without a feedback loop.
+                      if (!layout.syncScroll || layout.preview !== 'split') return
+                      const el = editorRef.current
+                      if (!el) return
+                      previewDriving.current = true
+                      const max = el.scrollHeight - el.clientHeight
+                      if (max > 0) el.scrollTop = r * max
+                      setTimeout(() => (previewDriving.current = false), 60)
+                    }}
+                  />
+                )}
+              </div>
             ) : (
               <div className="context-view">
                 <p className="muted">
@@ -690,6 +737,15 @@ export default function App() {
               >
                 typewriter
               </button>
+              {layout.preview === 'split' && (
+                <button
+                  className={'lnk' + (layout.syncScroll ? ' active' : '')}
+                  onClick={() => toggle('syncScroll')}
+                  title="Scroll the editor and preview together"
+                >
+                  sync
+                </button>
+              )}
             </footer>
           </div>
         </section>

@@ -1,22 +1,17 @@
 import { useEffect, useState } from 'react'
-import { marked } from 'marked'
+import { renderMarkdown } from './Preview'
 
-function escapeHtml(s: string) {
-  return s.replace(/[&<>"']/g, (c) =>
-    ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!,
-  )
-}
-
-/** Renders markdown with all raw HTML escaped first (no dangerous passthrough). */
+/**
+ * Markdown for coach output. Shares the hardened renderer with the live
+ * preview: raw tags are inert and javascript:/data: URLs are stripped.
+ */
 export default function Markdown({ text }: { text: string }) {
   const [html, setHtml] = useState('')
   useEffect(() => {
-    let alive = true
-    Promise.resolve(marked.parse(escapeHtml(text), { breaks: true })).then((h) => {
-      if (alive) setHtml(h as string)
-    })
-    return () => {
-      alive = false
+    try {
+      setHtml(renderMarkdown(text))
+    } catch {
+      setHtml('')
     }
   }, [text])
   return <div className="md" dangerouslySetInnerHTML={{ __html: html }} />

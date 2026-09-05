@@ -548,3 +548,74 @@ select.mini option { background: var(--pane); color: var(--ink); }
   .skills-body { flex-direction: column; }
   .skill-list { width: 100%; max-height: 130px; border-right: 0; border-bottom: 1px solid var(--edge-soft); }
 }
+
+/* ================= live preview ================= */
+.writing-area { flex: 1; min-height: 0; display: flex; }
+.writing-area > * { min-width: 0; }
+.writing-area.preview-off .editor { flex: 1; }
+.writing-area.preview-split .editor { flex: 1 1 50%; border-right: 1px solid var(--edge-soft); }
+.writing-area.preview-split .preview-pane { flex: 1 1 50%; }
+.writing-area.preview-only .preview-pane { flex: 1; }
+
+.preview-pane {
+  overflow-y: auto; padding: 26px max(5%, 26px) 40px;
+  background: var(--bg);
+}
+.writing-area.preview-only .preview-pane { padding: 26px max(8%, 34px) 40px; }
+.app.zen .writing-area.preview-only .preview-pane,
+.app.zen .writing-area.preview-off .editor { padding: 8vh max(16%, 40px) 20vh; }
+
+.prev-empty { color: var(--edge); font-size: 12.5px; }
+.prev-err { color: var(--bad); font-size: 12px; }
+
+/* the rendered document reads as a page, not as chat output */
+.md.prose { color: var(--ink-strong); line-height: 1.75; }
+.preview-pane.serif .md.prose { font-family: var(--serif); }
+.preview-pane.mono .md.prose { font-family: var(--mono); }
+.md.prose h1, .md.prose h2, .md.prose h3, .md.prose h4 {
+  font-family: var(--mono); color: var(--ink-strong);
+  letter-spacing: 0; text-transform: none;
+}
+.md.prose h1 { font-size: 1.5em; margin: 1.1em 0 .45em; }
+.md.prose h2 { font-size: 1.25em; margin: 1.1em 0 .4em; }
+.md.prose h3 { font-size: 1.08em; margin: 1em 0 .35em; color: var(--ink); }
+.md.prose h4 { font-size: 1em; color: var(--ink-mid); }
+.md.prose > :first-child { margin-top: 0; }
+.md.prose p { margin: 0 0 1em; }
+.md.prose ul, .md.prose ol { margin: 0 0 1em; padding-left: 1.5em; }
+.md.prose li { margin: .3em 0; }
+.md.prose li::marker { color: var(--ink-dim); }
+.md.prose blockquote {
+  margin: 1em 0; padding: .1em 0 .1em 1em;
+  border-left: 2px solid var(--edge); color: var(--ink-mid); font-style: italic;
+}
+.md.prose hr { margin: 1.6em 0; }
+.md.prose code { font-size: .86em; }
+.md.prose pre { margin: 1em 0; }
+.md.prose img { max-width: 100%; border-radius: 4px; }
+.md.prose table { font-size: .9em; }
+/* GFM task lists */
+.md.prose input[type=checkbox] {
+  appearance: none; width: 11px; height: 11px; margin-right: 6px;
+  border: 1px solid var(--ink-dim); border-radius: 2px; vertical-align: -1px;
+}
+.md.prose input[type=checkbox]:checked { background: var(--ink-mid); border-color: var(--ink-mid); }
+.md.prose li:has(> input[type=checkbox]) { list-style: none; margin-left: -1.2em; }
+
+/* segmented control */
+.seg { display: inline-flex; background: var(--bg-sunk); border-radius: 4px; padding: 1px; }
+.seg-b {
+  background: none; border: 0; cursor: pointer;
+  color: var(--ink-dim); font: 11px var(--mono);
+  padding: 3px 8px; border-radius: 3px;
+  transition: color .12s, background .12s;
+}
+.seg-b:hover { color: var(--ink); }
+.seg-b.on { background: var(--edge); color: var(--ink-strong); }
+
+@media (max-width: 900px) {
+  .writing-area.preview-split { flex-direction: column; }
+  .writing-area.preview-split .editor {
+    flex: 1 1 50%; border-right: 0; border-bottom: 1px solid var(--edge-soft);
+  }
+}
