@@ -18,7 +18,21 @@ Everything runs in the browser. Documents never leave your machine except as con
 - **Free-form chat** with the coach, with the full project context attached.
 - **Any provider**: OpenRouter, Google Gemini, Groq, Cerebras, NVIDIA NIM, GitHub Models, Mistral, OpenAI, Anthropic, Ollama, LM Studio, any OpenAI-compatible endpoint, and fully offline in-browser **WebGPU** models via WebLLM. Responses stream token by token.
 - **Import** PDF, DOCX, Markdown, plain text, HTML, RTF, CSV, JSON — **paste a URL** to pull in a blog post, style guide or docs page, or **paste raw text** straight from the clipboard as a note. **Export** any draft or piece of feedback as Markdown, TXT, DOCX, PDF or HTML.
+- **A writing environment, not a form.** Three panels — sources, editor, coach — each independently **toggleable and drag-resizable**. Your layout persists.
+- **Outline navigation** in the left margin, Left-style: Markdown headings listed with per-section word counts, click to jump, current section highlighted as you type.
+- **Focus mode** (`⌘\`) strips everything but the page. Plus typewriter scrolling, serif/mono toggle and text size controls.
 - Auto-saves your project to `localStorage`.
+
+### Keyboard
+
+| Shortcut | Action |
+|---|---|
+| `⌘/Ctrl + \` | Focus mode (Esc to exit) |
+| `⌘/Ctrl + 1` | Toggle sources panel |
+| `⌘/Ctrl + 2` | Toggle coach panel |
+| `⌘/Ctrl + 0` | Toggle outline |
+| `⌘/Ctrl + ,` | Settings |
+| `⌘/Ctrl + ↵` | Send to the coach |
 
 ## Run it
 

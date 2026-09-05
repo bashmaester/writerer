@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { AppSettings, ChatMsg, CoachMode, DocRole, Project, RefDoc } from './lib/types'
 import { MODE_LABEL, buildMessages, buildSynthesisMessages } from './lib/coach'
 import { runCompletion } from './lib/providers'
@@ -13,9 +13,12 @@ import {
 } from './lib/files'
 import { loadProject, loadSettings, saveProject, saveSettings, uid, defaultProject } from './lib/store'
 import { fetchUrlAsDoc } from './lib/fetchUrl'
+import { docStats, parseOutline, type Marker } from './lib/outline'
+import { useDragResize, useLayout } from './lib/layout'
 import Settings from './components/Settings'
 import Markdown from './components/Markdown'
 import PasteNote from './components/PasteNote'
+import Outline from './components/Outline'
 
 const ROLES: DocRole[] = ['guideline', 'sample', 'template', 'reference', 'draft']
 const MODES: CoachMode[] = ['analyze', 'critique', 'edit', 'evaluate', 'rewrite', 'critique-group']
@@ -34,8 +37,12 @@ export default function App() {
   const [urlStatus, setUrlStatus] = useState('')
   const [showPaste, setShowPaste] = useState(false)
   const [editDoc, setEditDoc] = useState<RefDoc | null>(null)
+  const [caretLine, setCaretLine] = useState(0)
   const abortRef = useRef<AbortController | null>(null)
   const feedRef = useRef<HTMLDivElement>(null)
+  const editorRef = useRef<HTMLTextAreaElement>(null)
+
+  const { layout, set, toggle } = useLayout()
 
   useEffect(() => saveSettings(settings), [settings])
   useEffect(() => saveProject(project), [project])
@@ -47,8 +54,72 @@ export default function App() {
     () => settings.providers.find((p) => p.id === settings.activeProviderId) ?? settings.providers[0],
     [settings],
   )
-  const patchProject = (p: Partial<Project>) =>
-    setProject((prev) => ({ ...prev, ...p, updatedAt: Date.now() }))
+  const patchProject = useCallback(
+    (p: Partial<Project>) => setProject((prev) => ({ ...prev, ...p, updatedAt: Date.now() })),
+    [],
+  )
+
+  const markers = useMemo(() => parseOutline(project.draft), [project.draft])
+  const stats = useMemo(() => docStats(project.draft), [project.draft])
+
+  /* ---------------- keyboard shortcuts ---------------- */
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const mod = e.metaKey || e.ctrlKey
+      if (e.key === 'Escape' && layout.zen) return set('zen', false)
+      if (!mod) return
+      const k = e.key.toLowerCase()
+      if (k === '\\') {
+        e.preventDefault()
+        toggle('zen')
+      } else if (k === '1') {
+        e.preventDefault()
+        toggle('left')
+      } else if (k === '2') {
+        e.preventDefault()
+        toggle('right')
+      } else if (k === '0') {
+        e.preventDefault()
+        toggle('outline')
+      } else if (k === ',') {
+        e.preventDefault()
+        setShowSettings(true)
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [layout.zen, set, toggle])
+
+  const dragLeft = useDragResize('left', layout.leftW, (w) => set('leftW', w))
+  const dragRight = useDragResize('right', layout.rightW, (w) => set('rightW', w))
+
+  /* ---------------- editor ---------------- */
+  const syncCaret = useCallback(() => {
+    const el = editorRef.current
+    if (!el) return
+    setCaretLine(el.value.slice(0, el.selectionStart).split('\n').length - 1)
+  }, [])
+
+  const jumpTo = useCallback((m: Marker) => {
+    const el = editorRef.current
+    if (!el) return
+    el.focus()
+    el.setSelectionRange(m.offset, m.offset)
+    // Approximate scroll: put the heading near the top third of the viewport.
+    const lineH = parseFloat(getComputedStyle(el).lineHeight) || 26
+    el.scrollTop = Math.max(0, m.line * lineH - el.clientHeight / 3)
+    setCaretLine(m.line)
+  }, [])
+
+  // Typewriter mode keeps the caret line centred.
+  useEffect(() => {
+    if (!layout.typewriter) return
+    const el = editorRef.current
+    if (!el) return
+    const lineH = parseFloat(getComputedStyle(el).lineHeight) || 26
+    const target = caretLine * lineH - el.clientHeight / 2 + lineH
+    el.scrollTo({ top: Math.max(0, target), behavior: 'smooth' })
+  }, [caretLine, layout.typewriter])
 
   /* ---------------- file handling ---------------- */
   async function ingest(files: FileList | File[], role: DocRole) {
@@ -107,7 +178,9 @@ export default function App() {
         patchProject({ docs: [...project.docs, doc] })
         setTab('refs')
       }
-      setUrlStatus(`Imported ${doc.words.toLocaleString()} words${page.via !== 'direct' ? ` via ${page.via}` : ''}.`)
+      setUrlStatus(
+        `Imported ${doc.words.toLocaleString()} words${page.via !== 'direct' ? ` via ${page.via}` : ''}.`,
+      )
       setTimeout(() => setUrlStatus(''), 4000)
     } catch (e: any) {
       setError(e?.message ?? String(e))
@@ -158,6 +231,8 @@ export default function App() {
     if (!provider) return setError('Configure a provider in Settings first.')
     if (!project.draft.trim() && mode !== 'chat')
       return setError('Paste or upload your draft first.')
+    if (layout.zen) set('zen', false)
+    if (!layout.right) set('right', true)
     setError('')
     setBusy(true)
     setProgress('')
@@ -200,7 +275,7 @@ export default function App() {
           onProgress: setProgress,
         })
       } else {
-        push({ role: 'user', content: `**${MODE_LABEL[mode]}**${focus ? ` — focus: ${focus}` : ''}` })
+        push({ role: 'user', content: `${MODE_LABEL[mode]}${focus ? ` — focus: ${focus}` : ''}` })
         const id = push({ role: 'assistant', content: '', persona: MODE_LABEL[mode] })
         await runCompletion(
           provider,
@@ -237,37 +312,75 @@ export default function App() {
 
   const transcript = () =>
     project.messages
-      .map((m) => (m.role === 'user' ? `\n---\n\n**You:** ${m.content}` : `\n### ${m.persona ?? 'Coach'}\n\n${m.content}`))
+      .map((m) =>
+        m.role === 'user'
+          ? `\n---\n\n**You:** ${m.content}`
+          : `\n### ${m.persona ?? 'Coach'}\n\n${m.content}`,
+      )
       .join('\n\n')
 
+  const zen = layout.zen
+  const showLeft = layout.left && !zen
+  const showRight = layout.right && !zen
+
   return (
-    <div className="app">
+    <div className={'app' + (zen ? ' zen' : '')}>
+      {/* ================= top bar ================= */}
       <header className="topbar">
         <div className="brand">
-          <span className="logo">✎</span>
-          <div>
-            <h1>Writerer</h1>
-            <small>writing coach &amp; critique group</small>
-          </div>
+          <span className="logo">/</span>
+          <input
+            className="project-name"
+            value={project.name}
+            spellCheck={false}
+            onChange={(e) => patchProject({ name: e.target.value })}
+          />
         </div>
-        <input
-          className="project-name"
-          value={project.name}
-          onChange={(e) => patchProject({ name: e.target.value })}
-        />
-        <div className="row">
-          <span className="pill" title={provider?.model}>
-            {provider ? `${provider.label} · ${provider.model}` : 'no provider'}
-          </span>
-          <button className="ghost sm" onClick={() => setShowSettings(true)}>
-            ⚙ Settings
+
+        <div className="tb-group">
+          <button
+            className={'tb' + (layout.left ? ' on' : '')}
+            onClick={() => toggle('left')}
+            title="Toggle sources panel (⌘1)"
+          >
+            Sources
           </button>
           <button
-            className="ghost sm"
+            className={'tb' + (layout.outline ? ' on' : '')}
+            onClick={() => toggle('outline')}
+            title="Toggle outline (⌘0)"
+          >
+            Outline
+          </button>
+          <button
+            className={'tb' + (layout.right ? ' on' : '')}
+            onClick={() => toggle('right')}
+            title="Toggle coach panel (⌘2)"
+          >
+            Coach
+          </button>
+        </div>
+
+        <span className="tb-spacer" />
+
+        <div className="tb-group">
+          <button className="tb" onClick={() => toggle('zen')} title="Distraction-free (⌘\)">
+            {zen ? 'Exit focus' : 'Focus'}
+          </button>
+          <button
+            className="tb"
+            onClick={() => setShowSettings(true)}
+            title="Settings (⌘,)"
+          >
+            {provider ? provider.model.split('/').pop() : 'no model'}
+          </button>
+          <button
+            className="tb"
             onClick={() => {
               if (confirm('Start a new empty project? Current work will be cleared.'))
                 setProject(defaultProject())
             }}
+            title="New project"
           >
             New
           </button>
@@ -275,140 +388,145 @@ export default function App() {
       </header>
 
       <main className="cols">
-        {/* -------- left: task + refs -------- */}
-        <section className="col left">
-          <h2>The assignment</h2>
-          <label className="field">
-            Task / prompt
-            <textarea
-              rows={5}
-              placeholder="e.g. Write a 1,200-word grant abstract for the NSF CAREER program describing our work on…"
-              value={project.task}
-              onChange={(e) => patchProject({ task: e.target.value })}
-            />
-          </label>
-          <label className="field">
-            Intended audience
-            <input
-              placeholder="e.g. non-specialist review panel"
-              value={project.audience}
-              onChange={(e) => patchProject({ audience: e.target.value })}
-            />
-          </label>
+        {/* ================= sources ================= */}
+        {showLeft && (
+          <>
+            <aside className="pane left" style={{ width: layout.leftW }}>
+              <div className="pane-inner">
+                <h2>Assignment</h2>
+                <textarea
+                  className="flat"
+                  rows={4}
+                  placeholder="The task: what are you writing, for whom, how long?"
+                  value={project.task}
+                  onChange={(e) => patchProject({ task: e.target.value })}
+                />
+                <input
+                  className="flat"
+                  placeholder="Intended audience"
+                  value={project.audience}
+                  onChange={(e) => patchProject({ audience: e.target.value })}
+                />
 
-          <h2>Reference materials</h2>
-          <DropZone
-            label="Drop guidelines, samples, templates, rubrics — PDF, DOCX, MD, TXT, HTML…"
-            onFiles={(f, role) => ingest(f, role)}
-            onUrl={(u, role) => ingestUrl(u, role)}
-            busy={importing}
-            status={urlStatus}
-            onPaste={() => setShowPaste(true)}
-          />
+                <h2>
+                  Sources
+                  <span className="h2-count">{project.docs.length || ''}</span>
+                </h2>
+                <DropZone
+                  onFiles={(f, role) => ingest(f, role)}
+                  onUrl={(u, role) => ingestUrl(u, role)}
+                  busy={importing}
+                  status={urlStatus}
+                  onPaste={() => setShowPaste(true)}
+                />
 
-          <ul className="doclist">
-            {project.docs.map((d) => (
-              <li key={d.id}>
-                <label className="row">
-                  <input
-                    type="checkbox"
-                    checked={d.include}
-                    onChange={(e) =>
-                      patchProject({
-                        docs: project.docs.map((x) =>
-                          x.id === d.id ? { ...x, include: e.target.checked } : x,
-                        ),
-                      })
-                    }
-                  />
-                  <span className="doc-name" title={d.sourceUrl ?? d.name}>
-                    {d.sourceUrl && <span className="src-badge" title={d.sourceUrl}>link</span>}
-                    {d.name}
-                  </span>
-                </label>
-                {d.sourceUrl && (
-                  <a className="doc-src" href={d.sourceUrl} target="_blank" rel="noreferrer">
-                    {(() => {
-                      try {
-                        return new URL(d.sourceUrl).hostname.replace(/^www\./, '')
-                      } catch {
-                        return d.sourceUrl
-                      }
-                    })()}
-                     ↗
-                  </a>
-                )}
-                <div className="row">
-                  <select
-                    value={d.role}
-                    onChange={(e) =>
-                      patchProject({
-                        docs: project.docs.map((x) =>
-                          x.id === d.id ? { ...x, role: e.target.value as DocRole } : x,
-                        ),
-                      })
-                    }
-                  >
-                    {ROLES.map((r) => (
-                      <option key={r} value={r}>
-                        {r}
-                      </option>
-                    ))}
-                  </select>
-                  <span className="hint">{d.words.toLocaleString()}w</span>
-                  <button
-                    className="ghost sm"
-                    onClick={() => setEditDoc(d)}
-                    title="View or edit this document's text"
-                  >
-                    Edit
-                  </button>
-                  <button
-                    className="ghost sm"
-                    onClick={() => patchProject({ draft: d.text })}
-                    title="Load this document into the draft editor"
-                  >
-                    → draft
-                  </button>
-                  <button
-                    className="ghost sm"
-                    onClick={() =>
-                      patchProject({ docs: project.docs.filter((x) => x.id !== d.id) })
-                    }
-                  >
-                    ✕
-                  </button>
-                </div>
-              </li>
-            ))}
-            {!project.docs.length && <p className="hint">No reference documents yet.</p>}
-          </ul>
-        </section>
+                <ul className="doclist">
+                  {project.docs.map((d) => (
+                    <li key={d.id} className={d.include ? '' : 'off'}>
+                      <div className="doc-top">
+                        <input
+                          type="checkbox"
+                          checked={d.include}
+                          title="Include in the context sent to the model"
+                          onChange={(e) =>
+                            patchProject({
+                              docs: project.docs.map((x) =>
+                                x.id === d.id ? { ...x, include: e.target.checked } : x,
+                              ),
+                            })
+                          }
+                        />
+                        <span className="doc-name" title={d.sourceUrl ?? d.name}>
+                          {d.name}
+                        </span>
+                        <span className="doc-w">{d.words.toLocaleString()}</span>
+                      </div>
+                      <div className="doc-actions">
+                        <select
+                          value={d.role}
+                          onChange={(e) =>
+                            patchProject({
+                              docs: project.docs.map((x) =>
+                                x.id === d.id ? { ...x, role: e.target.value as DocRole } : x,
+                              ),
+                            })
+                          }
+                        >
+                          {ROLES.map((r) => (
+                            <option key={r} value={r}>
+                              {r}
+                            </option>
+                          ))}
+                        </select>
+                        {d.sourceUrl && (
+                          <a
+                            className="lnk"
+                            href={d.sourceUrl}
+                            target="_blank"
+                            rel="noreferrer"
+                            title={d.sourceUrl}
+                          >
+                            source
+                          </a>
+                        )}
+                        <span className="tb-spacer" />
+                        <button className="lnk" onClick={() => setEditDoc(d)}>
+                          edit
+                        </button>
+                        <button className="lnk" onClick={() => patchProject({ draft: d.text })}>
+                          to draft
+                        </button>
+                        <button
+                          className="lnk del"
+                          onClick={() =>
+                            patchProject({ docs: project.docs.filter((x) => x.id !== d.id) })
+                          }
+                        >
+                          remove
+                        </button>
+                      </div>
+                    </li>
+                  ))}
+                  {!project.docs.length && (
+                    <p className="muted">
+                      Nothing yet. Add the guidelines, samples or rubric the coach should judge
+                      your work against.
+                    </p>
+                  )}
+                </ul>
+              </div>
+            </aside>
+            <div className="grip" onPointerDown={dragLeft} title="Drag to resize" />
+          </>
+        )}
 
-        {/* -------- middle: draft -------- */}
-        <section className="col mid">
-          <div className="tabs">
-            <button className={tab === 'draft' ? 'tab on' : 'tab'} onClick={() => setTab('draft')}>
-              Draft
-            </button>
-            <button className={tab === 'refs' ? 'tab on' : 'tab'} onClick={() => setTab('refs')}>
-              Context preview
-            </button>
-            <span className="spacer" />
-            <span className="hint">{wordCount(project.draft).toLocaleString()} words</span>
-          </div>
+        {/* ================= editor ================= */}
+        <section className="pane mid">
+          {layout.outline && tab === 'draft' && (
+            <div className="outline-col">
+              <div className="outline-head">{project.name || 'untitled'}</div>
+              <Outline markers={markers} activeLine={caretLine} onJump={jumpTo} />
+            </div>
+          )}
 
-          {tab === 'draft' ? (
-            <>
-              <textarea
-                className="editor"
-                placeholder="Paste your draft here, or drop a file below…"
-                value={project.draft}
-                onChange={(e) => patchProject({ draft: e.target.value })}
-              />
-              <div className="row wrap">
-                <label className="ghost sm filebtn">
-                  ⬆ Upload draft
+          <div className="editor-col">
+            {!zen && (
+              <div className="mid-tabs">
+                <button
+                  className={'tb' + (tab === 'draft' ? ' on' : '')}
+                  onClick={() => setTab('draft')}
+                >
+                  Draft
+                </button>
+                <button
+                  className={'tb' + (tab === 'refs' ? ' on' : '')}
+                  onClick={() => setTab('refs')}
+                >
+                  Context
+                </button>
+                <span className="tb-spacer" />
+                <label className="ghost-file" title="Upload a draft">
+                  open
                   <input
                     type="file"
                     accept={ACCEPTED}
@@ -416,156 +534,229 @@ export default function App() {
                     onChange={(e) => e.target.files && ingest(e.target.files, 'draft')}
                   />
                 </label>
-                <span className="hint">Export draft:</span>
-                {(['md', 'txt', 'docx', 'pdf', 'html'] as const).map((f) => (
-                  <button key={f} className="ghost sm" onClick={() => exportAs(f, project.draft, project.name)}>
-                    {f.toUpperCase()}
-                  </button>
-                ))}
-              </div>
-            </>
-          ) : (
-            <div className="preview">
-              <p className="hint">
-                Exactly what the model receives as reference context (trimmed to your budget).
-              </p>
-              <pre>
-                {project.docs
-                  .filter((d) => d.include)
-                  .map((d) => `[${d.role}] ${d.name} — ${d.words}w\n${d.text.slice(0, 1500)}…`)
-                  .join('\n\n────────\n\n') || '(nothing included)'}
-              </pre>
-            </div>
-          )}
-        </section>
-
-        {/* -------- right: coach -------- */}
-        <section className="col right">
-          <h2>Coaching</h2>
-          <label className="field">
-            Focus (optional)
-            <input
-              placeholder="e.g. the opening paragraph, or compliance with the word limit"
-              value={focus}
-              onChange={(e) => setFocus(e.target.value)}
-            />
-          </label>
-          <div className="modes">
-            {MODES.map((m) => (
-              <button key={m} className="mode" disabled={busy} onClick={() => run(m)}>
-                {MODE_LABEL[m]}
-              </button>
-            ))}
-          </div>
-
-          {error && <div className="error">{error}</div>}
-          {busy && (
-            <div className="busy">
-              <span className="spin" /> {progress || 'Thinking…'}
-              <button className="ghost sm" onClick={() => abortRef.current?.abort()}>
-                Stop
-              </button>
-            </div>
-          )}
-
-          <div className="feed" ref={feedRef}>
-            {!project.messages.length && (
-              <div className="empty">
-                <p>
-                  Add your task, drop in the guidelines and samples, paste your draft — then pick a
-                  coaching mode.
-                </p>
-                <p className="hint">
-                  <strong>Critique group</strong> runs every enabled reader in turn and then
-                  synthesizes a revision plan.
-                </p>
+                <select
+                  className="mini"
+                  value=""
+                  title="Export the draft"
+                  onChange={(e) => {
+                    if (e.target.value) exportAs(e.target.value as any, project.draft, project.name)
+                    e.currentTarget.value = ''
+                  }}
+                >
+                  <option value="">save as…</option>
+                  <option value="md">Markdown</option>
+                  <option value="txt">Plain text</option>
+                  <option value="docx">DOCX</option>
+                  <option value="pdf">PDF</option>
+                  <option value="html">HTML</option>
+                </select>
               </div>
             )}
-            {project.messages.map((m) =>
-              m.role === 'user' ? (
-                <div key={m.id} className="msg user">
-                  <Markdown text={m.content} />
-                </div>
-              ) : (
-                <div key={m.id} className="msg bot">
-                  <div className="msg-head">
-                    <strong>{m.persona ?? 'Coach'}</strong>
-                    <span className="spacer" />
-                    <button className="ghost sm" onClick={() => navigator.clipboard.writeText(m.content)}>
-                      Copy
+
+            {tab === 'draft' ? (
+              <textarea
+                ref={editorRef}
+                className={'editor' + (layout.serif ? ' serif' : ' mono')}
+                style={{ fontSize: layout.fontSize }}
+                placeholder="Write."
+                spellCheck
+                value={project.draft}
+                onChange={(e) => {
+                  patchProject({ draft: e.target.value })
+                  syncCaret()
+                }}
+                onClick={syncCaret}
+                onKeyUp={syncCaret}
+                onSelect={syncCaret}
+              />
+            ) : (
+              <div className="context-view">
+                <p className="muted">
+                  Exactly what the model receives as reference context, trimmed to your budget.
+                </p>
+                <pre>
+                  {project.docs
+                    .filter((d) => d.include)
+                    .map((d) => `[${d.role}] ${d.name} — ${d.words}w\n\n${d.text.slice(0, 1500)}…`)
+                    .join('\n\n────────────\n\n') || 'Nothing included.'}
+                </pre>
+              </div>
+            )}
+
+            <footer className="statusbar">
+              <span>{stats.words.toLocaleString()} words</span>
+              <span>{stats.chars.toLocaleString()} chars</span>
+              <span>{stats.paragraphs} ¶</span>
+              <span>~{stats.readingMinutes} min read</span>
+              <span className="tb-spacer" />
+              <button
+                className="lnk"
+                onClick={() => set('fontSize', Math.max(12, layout.fontSize - 1))}
+                title="Smaller text"
+              >
+                A−
+              </button>
+              <button
+                className="lnk"
+                onClick={() => set('fontSize', Math.min(28, layout.fontSize + 1))}
+                title="Larger text"
+              >
+                A+
+              </button>
+              <button className="lnk" onClick={() => toggle('serif')}>
+                {layout.serif ? 'serif' : 'mono'}
+              </button>
+              <button
+                className={'lnk' + (layout.typewriter ? ' active' : '')}
+                onClick={() => toggle('typewriter')}
+                title="Keep the current line centred"
+              >
+                typewriter
+              </button>
+            </footer>
+          </div>
+        </section>
+
+        {/* ================= coach ================= */}
+        {showRight && (
+          <>
+            <div className="grip" onPointerDown={dragRight} title="Drag to resize" />
+            <aside className="pane right" style={{ width: layout.rightW }}>
+              <div className="pane-inner">
+                <h2>Coach</h2>
+                <input
+                  className="flat"
+                  placeholder="Focus (optional) — e.g. the opening, or the word limit"
+                  value={focus}
+                  onChange={(e) => setFocus(e.target.value)}
+                />
+                <div className="modes">
+                  {MODES.map((m) => (
+                    <button key={m} className="mode" disabled={busy} onClick={() => run(m)}>
+                      {MODE_LABEL[m]}
                     </button>
-                    {/##\s*Rewrite/i.test(m.content) && (
-                      <button className="ghost sm" onClick={() => applyRewrite(m.content)}>
-                        Use as draft
-                      </button>
-                    )}
-                    <select
-                      className="mini"
-                      value=""
-                      onChange={(e) => {
-                        if (e.target.value)
-                          exportAs(e.target.value as any, m.content, `${project.name}-${m.persona}`)
-                        e.currentTarget.value = ''
-                      }}
-                    >
-                      <option value="">Export…</option>
-                      <option value="md">Markdown</option>
-                      <option value="txt">Plain text</option>
-                      <option value="docx">DOCX</option>
-                      <option value="pdf">PDF</option>
-                      <option value="html">HTML</option>
-                    </select>
-                  </div>
-                  <Markdown text={m.content || '…'} />
+                  ))}
                 </div>
-              ),
-            )}
-          </div>
 
-          <form
-            className="ask"
-            onSubmit={(e) => {
-              e.preventDefault()
-              const v = note.trim()
-              if (!v || busy) return
-              setNote('')
-              run('chat', v)
-            }}
-          >
-            <textarea
-              rows={2}
-              placeholder="Ask the coach anything — “is my thesis clear?”, “tighten paragraph 3”…"
-              value={note}
-              onChange={(e) => setNote(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' && (e.metaKey || e.ctrlKey))
-                  (e.currentTarget.form as HTMLFormElement).requestSubmit()
-              }}
-            />
-            <button disabled={busy || !note.trim()}>Send</button>
-          </form>
-          <div className="row">
-            <button
-              className="ghost sm"
-              disabled={!project.messages.length}
-              onClick={() => exportAs('md', transcript(), `${project.name}-feedback`)}
-            >
-              Export all feedback
-            </button>
-            <button
-              className="ghost sm"
-              disabled={!project.messages.length}
-              onClick={() => patchProject({ messages: [] })}
-            >
-              Clear
-            </button>
-          </div>
-        </section>
+                {error && (
+                  <div className="error">
+                    {error}
+                    <button className="lnk" onClick={() => setError('')}>
+                      dismiss
+                    </button>
+                  </div>
+                )}
+                {busy && (
+                  <div className="busy">
+                    <span className="dot" />
+                    <span>{progress || 'Thinking…'}</span>
+                    <span className="tb-spacer" />
+                    <button className="lnk" onClick={() => abortRef.current?.abort()}>
+                      stop
+                    </button>
+                  </div>
+                )}
+
+                <div className="feed" ref={feedRef}>
+                  {!project.messages.length && !busy && (
+                    <p className="muted">
+                      Add your task and sources, write a draft, then choose a mode. Critique group
+                      runs every enabled reader in turn and synthesizes a revision plan.
+                    </p>
+                  )}
+                  {project.messages.map((m) =>
+                    m.role === 'user' ? (
+                      <div key={m.id} className="msg user">
+                        {m.content}
+                      </div>
+                    ) : (
+                      <div key={m.id} className="msg bot">
+                        <div className="msg-head">
+                          <strong>{m.persona ?? 'Coach'}</strong>
+                          <span className="tb-spacer" />
+                          <button
+                            className="lnk"
+                            onClick={() => navigator.clipboard.writeText(m.content)}
+                          >
+                            copy
+                          </button>
+                          {/##\s*Rewrite/i.test(m.content) && (
+                            <button className="lnk" onClick={() => applyRewrite(m.content)}>
+                              use as draft
+                            </button>
+                          )}
+                          <select
+                            className="mini"
+                            value=""
+                            onChange={(e) => {
+                              if (e.target.value)
+                                exportAs(
+                                  e.target.value as any,
+                                  m.content,
+                                  `${project.name}-${m.persona}`,
+                                )
+                              e.currentTarget.value = ''
+                            }}
+                          >
+                            <option value="">save…</option>
+                            <option value="md">Markdown</option>
+                            <option value="txt">Plain text</option>
+                            <option value="docx">DOCX</option>
+                            <option value="pdf">PDF</option>
+                            <option value="html">HTML</option>
+                          </select>
+                        </div>
+                        <Markdown text={m.content || '…'} />
+                      </div>
+                    ),
+                  )}
+                </div>
+
+                <form
+                  className="ask"
+                  onSubmit={(e) => {
+                    e.preventDefault()
+                    const v = note.trim()
+                    if (!v || busy) return
+                    setNote('')
+                    run('chat', v)
+                  }}
+                >
+                  <textarea
+                    className="flat"
+                    rows={2}
+                    placeholder="Ask the coach…  (⌘↵)"
+                    value={note}
+                    onChange={(e) => setNote(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && (e.metaKey || e.ctrlKey))
+                        (e.currentTarget.form as HTMLFormElement).requestSubmit()
+                    }}
+                  />
+                </form>
+                <div className="feed-actions">
+                  <button
+                    className="lnk"
+                    disabled={!project.messages.length}
+                    onClick={() => exportAs('md', transcript(), `${project.name}-feedback`)}
+                  >
+                    export all
+                  </button>
+                  <button
+                    className="lnk"
+                    disabled={!project.messages.length}
+                    onClick={() => patchProject({ messages: [] })}
+                  >
+                    clear
+                  </button>
+                </div>
+              </div>
+            </aside>
+          </>
+        )}
       </main>
 
-      {showPaste && (
-        <PasteNote onSave={savePasted} onClose={() => setShowPaste(false)} />
-      )}
+      {showPaste && <PasteNote onSave={savePasted} onClose={() => setShowPaste(false)} />}
 
       {editDoc && (
         <PasteNote
@@ -593,14 +784,12 @@ export default function App() {
 }
 
 function DropZone({
-  label,
   onFiles,
   onUrl,
   onPaste,
   busy,
   status,
 }: {
-  label: string
   onFiles: (files: FileList | File[], role: DocRole) => void
   onUrl: (url: string, role: DocRole) => void
   onPaste: () => void
@@ -630,23 +819,26 @@ function DropZone({
         e.preventDefault()
         setOver(false)
         if (e.dataTransfer.files.length) return onFiles(e.dataTransfer.files, role)
-        // Dragging a link or selected text from another tab.
-        const dropped = e.dataTransfer.getData('text/uri-list') || e.dataTransfer.getData('text/plain')
+        const dropped =
+          e.dataTransfer.getData('text/uri-list') || e.dataTransfer.getData('text/plain')
         if (dropped && /^https?:\/\//i.test(dropped.trim())) onUrl(dropped.trim(), role)
       }}
     >
-      <p>{label}</p>
-
-      <div className="row">
-        <select value={role} onChange={(e) => setRole(e.target.value as DocRole)}>
+      <div className="drop-row">
+        <select
+          className="mini"
+          value={role}
+          onChange={(e) => setRole(e.target.value as DocRole)}
+          title="How should the coach treat what you add?"
+        >
           {ROLES.map((r) => (
             <option key={r} value={r}>
-              add as: {r}
+              as {r}
             </option>
           ))}
         </select>
-        <label className="ghost sm filebtn">
-          Browse…
+        <label className="lnk file">
+          file
           <input
             type="file"
             multiple
@@ -655,21 +847,21 @@ function DropZone({
             onChange={(e) => e.target.files && onFiles(e.target.files, role)}
           />
         </label>
-        <button className="ghost sm" onClick={onPaste}>
-          📋 Paste text
+        <button className="lnk" onClick={onPaste}>
+          paste
         </button>
       </div>
 
-      <div className="url-row">
+      <div className="drop-url">
         <input
+          className="flat"
           type="url"
-          placeholder="…or paste a URL: blog post, style guide, docs page"
+          placeholder="drop a file, or paste a link…"
           value={url}
           disabled={busy}
           onChange={(e) => setUrl(e.target.value)}
           onPaste={(e) => {
             const t = e.clipboardData.getData('text')
-            // Multi-line or clearly non-URL content belongs in the note editor.
             if (t && (t.includes('\n') || t.trim().length > 400)) {
               e.preventDefault()
               onPaste()
@@ -682,11 +874,13 @@ function DropZone({
             }
           }}
         />
-        <button className="ghost sm" disabled={busy || !url.trim()} onClick={submitUrl}>
-          {busy ? '…' : 'Add'}
-        </button>
+        {!!url.trim() && (
+          <button className="lnk" disabled={busy} onClick={submitUrl}>
+            add
+          </button>
+        )}
       </div>
-      {(busy || status) && <p className="hint">{status || 'Extracting text…'}</p>}
+      {(busy || status) && <p className="muted">{status || 'Reading…'}</p>}
     </div>
   )
 }
