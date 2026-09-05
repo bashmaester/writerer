@@ -21,6 +21,7 @@ Everything runs in the browser. Documents never leave your machine except as con
 - **A writing environment, not a form.** Three panels — sources, editor, coach — each independently **toggleable and drag-resizable**. Your layout persists.
 - **Outline navigation** in the left margin, Left-style: Markdown headings listed with per-section word counts, click to jump, current section highlighted as you type.
 - **Focus mode** (`⌘\`) strips everything but the page. Plus typewriter scrolling, serif/mono toggle and text size controls.
+- **Agent Skills.** Portable `SKILL.md` procedures the coach *executes* rather than just answers with: it reads your draft, searches your sources, makes targeted edits and verifies them in a loop. Three built in (rubric audit, line-edit pass, structural diagnosis); import or author your own. Tool access is whitelistable per skill and enforced. See **[SKILLS.md](SKILLS.md)**.
 - Auto-saves your project to `localStorage`.
 
 ### Keyboard

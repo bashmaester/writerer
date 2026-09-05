@@ -19,6 +19,10 @@ import Settings from './components/Settings'
 import Markdown from './components/Markdown'
 import PasteNote from './components/PasteNote'
 import Outline from './components/Outline'
+import SkillsPanel from './components/Skills'
+import type { Skill } from './lib/skills/types'
+import { loadSkills, saveSkills } from './lib/skills/store'
+import { runSkill } from './lib/skills/runner'
 
 const ROLES: DocRole[] = ['guideline', 'sample', 'template', 'reference', 'draft']
 const MODES: CoachMode[] = ['analyze', 'critique', 'edit', 'evaluate', 'rewrite', 'critique-group']
@@ -38,6 +42,9 @@ export default function App() {
   const [showPaste, setShowPaste] = useState(false)
   const [editDoc, setEditDoc] = useState<RefDoc | null>(null)
   const [caretLine, setCaretLine] = useState(0)
+  const [skills, setSkills] = useState<Skill[]>(loadSkills)
+  const [showSkills, setShowSkills] = useState(false)
+  const projectRef = useRef(project)
   const abortRef = useRef<AbortController | null>(null)
   const feedRef = useRef<HTMLDivElement>(null)
   const editorRef = useRef<HTMLTextAreaElement>(null)
@@ -46,6 +53,11 @@ export default function App() {
 
   useEffect(() => saveSettings(settings), [settings])
   useEffect(() => saveProject(project), [project])
+  useEffect(() => saveSkills(skills), [skills])
+  // The agent loop reads the live project between tool calls.
+  useEffect(() => {
+    projectRef.current = project
+  }, [project])
   useEffect(() => {
     feedRef.current?.scrollTo({ top: feedRef.current.scrollHeight, behavior: 'smooth' })
   }, [project.messages.length])
@@ -293,6 +305,68 @@ export default function App() {
     }
   }
 
+  async function executeSkill(skill: Skill) {
+    if (!provider) return setError('Configure a provider in Settings first.')
+    if (!project.draft.trim())
+      return setError('Write or paste a draft before running a skill.')
+    setShowSkills(false)
+    if (layout.zen) set('zen', false)
+    if (!layout.right) set('right', true)
+    setError('')
+    setBusy(true)
+    setProgress(`${skill.name} starting…`)
+    const ac = new AbortController()
+    abortRef.current = ac
+
+    push({ role: 'user', content: `Run skill: ${skill.name}` })
+    const traceId = push({ role: 'assistant', content: '', persona: `skill · ${skill.name}` })
+    let trace = ''
+    const write = (s: string) => {
+      trace += s
+      setProject((p) => ({
+        ...p,
+        messages: p.messages.map((m) => (m.id === traceId ? { ...m, content: trace } : m)),
+      }))
+    }
+
+    try {
+      await runSkill({
+        skill,
+        provider,
+        getProject: () => projectRef.current,
+        applyPatch: (patch) => patchProject(patch),
+        signal: ac.signal,
+        userNote: focus.trim() || undefined,
+        onEvent: (e) => {
+          if (e.type === 'status') setProgress(`${skill.name} · ${e.text}`)
+          else if (e.type === 'thought' && e.text) write(`${e.text}\n\n`)
+          else if (e.type === 'call' && e.call)
+            write(
+              `\`${e.call.name}\`${
+                Object.keys(e.call.args).length
+                  ? ` ${JSON.stringify(e.call.args).slice(0, 120)}`
+                  : ''
+              }\n\n`,
+            )
+          else if (e.type === 'result' && e.result)
+            write(
+              e.result.ok
+                ? `> ${e.result.output.split('\n')[0].slice(0, 160)}\n\n`
+                : `> **${e.result.output.split('\n')[0].slice(0, 160)}**\n\n`,
+            )
+          else if (e.type === 'done') write(`\n---\n\n${e.text ?? ''}\n`)
+          else if (e.type === 'error') setError(e.text ?? 'Skill failed.')
+        },
+      })
+    } catch (e: any) {
+      if (e?.name !== 'AbortError') setError(e?.message ?? String(e))
+    } finally {
+      setBusy(false)
+      setProgress('')
+      abortRef.current = null
+    }
+  }
+
   function applyRewrite(content: string) {
     const m = /##\s*Rewrite\s*\n([\s\S]*?)(?:\n##\s|\s*$)/i.exec(content)
     const text = (m ? m[1] : content).trim()
@@ -364,6 +438,9 @@ export default function App() {
         <span className="tb-spacer" />
 
         <div className="tb-group">
+          <button className="tb" onClick={() => setShowSkills(true)} title="Skills library">
+            Skills
+          </button>
           <button className="tb" onClick={() => toggle('zen')} title="Distraction-free (⌘\)">
             {zen ? 'Exit focus' : 'Focus'}
           </button>
@@ -755,6 +832,16 @@ export default function App() {
           </>
         )}
       </main>
+
+      {showSkills && (
+        <SkillsPanel
+          skills={skills}
+          onChange={setSkills}
+          onRun={executeSkill}
+          onClose={() => setShowSkills(false)}
+          busy={busy}
+        />
+      )}
 
       {showPaste && <PasteNote onSave={savePasted} onClose={() => setShowPaste(false)} />}
 
