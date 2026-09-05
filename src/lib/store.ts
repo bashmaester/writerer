@@ -22,9 +22,10 @@ export function makeProvider(kind: ProviderConfig['kind']): ProviderConfig {
 }
 
 export function defaultSettings(): AppSettings {
+  // Browser-ready providers first so the hosted site works out of the box.
   const first = makeProvider('openrouter')
   return {
-    providers: [first, makeProvider('ollama')],
+    providers: [first, makeProvider('gemini'), makeProvider('groq'), makeProvider('ollama')],
     activeProviderId: first.id,
     personas: DEFAULT_PERSONAS,
     contextCharBudget: 40000,

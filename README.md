@@ -16,7 +16,7 @@ Everything runs in the browser. Documents never leave your machine except as con
   - *Critique group* — every enabled reader critiques in turn, then a workshop leader synthesizes a prioritized revision plan
 - **Editable critique group.** Developmental Editor, Line Editor, Target Reader, Rubric Hawk, Skeptic — rename them, rewrite their briefs, add your own.
 - **Free-form chat** with the coach, with the full project context attached.
-- **Any provider**: OpenRouter, OpenAI, Anthropic (Claude), Ollama, LM Studio, any OpenAI-compatible endpoint (vLLM, llama.cpp, LiteLLM, Groq…), and fully offline in-browser **WebGPU** models via WebLLM. Responses stream token by token.
+- **Any provider**: OpenRouter, Google Gemini, Groq, Cerebras, NVIDIA NIM, GitHub Models, Mistral, OpenAI, Anthropic, Ollama, LM Studio, any OpenAI-compatible endpoint, and fully offline in-browser **WebGPU** models via WebLLM. Responses stream token by token.
 - **Import** PDF, DOCX, Markdown, plain text, HTML, RTF, CSV, JSON. **Export** any draft or piece of feedback as Markdown, TXT, DOCX, PDF or HTML.
 - Auto-saves your project to `localStorage`.
 
@@ -32,14 +32,48 @@ npm run build    # static bundle in dist/
 
 Open **⚙ Settings**, pick or add a provider, paste a key if needed, then hit **Test / fetch models** to populate the model list.
 
-Because calls go directly from the browser, local engines must allow cross-origin requests:
+### Provider matrix
 
-| Engine | What to do |
-|---|---|
-| Ollama | `OLLAMA_ORIGINS=* ollama serve`, base URL `http://localhost:11434/v1` |
-| LM Studio | Start the local server and enable CORS in its settings, base URL `http://localhost:1234/v1` |
-| Anthropic | Works directly; the CORS opt-in header is sent for you |
-| WebGPU | No server. First run downloads model weights (~2 GB) and caches them |
+Writerer is backendless, so every call is made **by your browser**. That means the endpoint must send CORS headers permitting this page's origin. Each provider carries a badge in Settings:
+
+| Provider | Free tier | Browser-ready | Base URL |
+|---|---|---|---|
+| **OpenRouter** | yes (`:free` models) | ✅ | `https://openrouter.ai/api/v1` |
+| **Google Gemini** | yes, generous | ✅ | `https://generativelanguage.googleapis.com/v1beta/openai` |
+| **Groq** | yes | ✅ | `https://api.groq.com/openai/v1` |
+| **Cerebras** | yes | ✅ | `https://api.cerebras.ai/v1` |
+| **OpenAI** | no | ✅ | `https://api.openai.com/v1` |
+| **Anthropic** | no | ✅ | `https://api.anthropic.com/v1` |
+| **NVIDIA NIM** | free credits | ⚠️ may need proxy | `https://integrate.api.nvidia.com/v1` |
+| **GitHub Models** | yes, PAT-limited | ⚠️ may need proxy | `https://models.github.ai/inference` |
+| **Mistral** | yes | ⚠️ may need proxy | `https://api.mistral.ai/v1` |
+| **WebGPU (WebLLM)** | free & private | ✅ no network | — |
+| **Ollama / LM Studio** | free & local | ⚙️ needs CORS setup | `http://localhost:11434/v1` · `:1234/v1` |
+
+GitHub Models needs a PAT with the **`models:read`** scope. Gemini keys come from [AI Studio](https://aistudio.google.com/apikey).
+
+### Fixing the Ollama CORS error
+
+> Access to fetch at `http://localhost:11434/...` has been blocked by CORS policy
+
+Ollama only answers browser requests from origins it has been told to trust. Quit Ollama fully, then relaunch it allowing the page's origin:
+
+```bash
+# terminal-launched
+OLLAMA_ORIGINS=https://bashmaester.github.io ollama serve
+
+# macOS menubar app
+launchctl setenv OLLAMA_ORIGINS "https://bashmaester.github.io"
+# then quit and reopen Ollama
+
+# Windows: add a user env var OLLAMA_ORIGINS with that value, restart from the tray
+```
+
+Use `http://localhost:5173` instead when running the dev server. Settings shows a copy-paste command with your current origin already filled in. `OLLAMA_ORIGINS=*` works too but lets *any* website reach your local models — prefer the exact origin.
+
+For **LM Studio**, start the local server and toggle CORS on in its server settings.
+
+Note that `localhost` is exempt from the browser's mixed-content rule, so local models do work from the HTTPS site once CORS is configured.
 
 The **Context budget** slider caps how many characters of reference material are sent per request; oversized documents are trimmed head-and-tail. Lower it for small-context models.
 

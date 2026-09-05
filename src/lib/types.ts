@@ -2,10 +2,19 @@ export type ProviderKind =
   | 'openai'
   | 'openrouter'
   | 'anthropic'
+  | 'gemini'
+  | 'github'
+  | 'nvidia'
+  | 'groq'
+  | 'mistral'
+  | 'cerebras'
   | 'ollama'
   | 'lmstudio'
   | 'custom'
   | 'webgpu'
+
+/** Whether the provider sends CORS headers allowing direct browser calls. */
+export type CorsSupport = 'yes' | 'no' | 'local' | 'n/a'
 
 export interface ProviderConfig {
   id: string

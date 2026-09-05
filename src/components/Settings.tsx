@@ -2,6 +2,46 @@ import { useState } from 'react'
 import type { AppSettings, ProviderConfig, ProviderKind } from '../lib/types'
 import { PROVIDER_PRESETS, listModels } from '../lib/providers'
 import { makeProvider } from '../lib/store'
+import type { CorsSupport } from '../lib/types'
+
+const CORS_LABEL: Record<CorsSupport, string> = {
+  yes: '✓ browser-ready',
+  no: '⚠ may need proxy',
+  local: '⚙ needs CORS setup',
+  'n/a': '✓ no network',
+}
+const CORS_TITLE: Record<CorsSupport, string> = {
+  yes: 'Allows direct calls from the browser.',
+  no: 'This endpoint often blocks browser calls; you may need a proxy or the local dev server.',
+  local: 'A local server you must configure to accept this page’s origin.',
+  'n/a': 'Runs inside the browser — no network request at all.',
+}
+
+/** Ollama needs to allow this exact origin; show a copyable command. */
+function OllamaHelp() {
+  const origin = location.origin
+  const cmd = `OLLAMA_ORIGINS=${origin} ollama serve`
+  return (
+    <div className="cors-help">
+      <strong>Ollama must allow this page’s origin ({origin}).</strong>
+      <p>Quit Ollama completely, then start it with:</p>
+      <pre>{cmd}</pre>
+      <p>
+        macOS app: <code>launchctl setenv OLLAMA_ORIGINS "{origin}"</code> then restart Ollama.
+        <br />
+        Windows: add <code>OLLAMA_ORIGINS</code> = <code>{origin}</code> as a user environment
+        variable, then restart Ollama from the tray.
+      </p>
+      <button className="ghost sm" onClick={() => navigator.clipboard.writeText(cmd)}>
+        Copy command
+      </button>
+      <p className="hint">
+        Using <code>OLLAMA_ORIGINS=*</code> allows any site to reach your local models — prefer the
+        exact origin above.
+      </p>
+    </div>
+  )
+}
 
 export default function Settings({
   settings,
@@ -75,6 +115,9 @@ export default function Settings({
                       />
                     </label>
                     <span className="tag">{preset.label}</span>
+                    <span className={`tag cors-${preset.cors}`} title={CORS_TITLE[preset.cors]}>
+                      {CORS_LABEL[preset.cors]}
+                    </span>
                     <button
                       className="ghost sm"
                       onClick={() => {
@@ -91,7 +134,26 @@ export default function Settings({
                     </button>
                   </div>
 
-                  <p className="hint">{preset.note}</p>
+                  <p className="hint">
+                    {preset.note}
+                    {preset.free && <> <span className="free">Free: {preset.free}</span></>}
+                    {preset.keyUrl && (
+                      <>
+                        {' '}
+                        <a href={preset.keyUrl} target="_blank" rel="noreferrer">
+                          Get a key ↗
+                        </a>
+                      </>
+                    )}
+                  </p>
+
+                  {p.kind === 'ollama' && <OllamaHelp />}
+                  {p.kind === 'lmstudio' && (
+                    <pre className="cors-help">
+                      LM Studio → Developer / Local Server → start the server and turn ON
+                      &quot;CORS&quot;, then Test below.
+                    </pre>
+                  )}
 
                   <div className="grid2">
                     {p.kind !== 'webgpu' && (
