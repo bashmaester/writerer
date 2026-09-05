@@ -3,6 +3,7 @@ import type { AppSettings, ProviderConfig, ProviderKind } from '../lib/types'
 import { PROVIDER_PRESETS, listModels } from '../lib/providers'
 import { makeProvider } from '../lib/store'
 import type { CorsSupport } from '../lib/types'
+import ModelPicker from './ModelPicker'
 
 const CORS_LABEL: Record<CorsSupport, string> = {
   yes: '✓ browser-ready',
@@ -178,16 +179,12 @@ export default function Settings({
                     )}
                     <label>
                       Model
-                      <input
-                        list={`models-${p.id}`}
+                      <ModelPicker
                         value={p.model}
-                        onChange={(e) => patch(p.id, { model: e.target.value })}
+                        options={models[p.id] ?? []}
+                        placeholder="model name"
+                        onChange={(v) => patch(p.id, { model: v })}
                       />
-                      <datalist id={`models-${p.id}`}>
-                        {(models[p.id] ?? []).map((m) => (
-                          <option key={m} value={m} />
-                        ))}
-                      </datalist>
                     </label>
                     <label>
                       Temperature: {p.temperature.toFixed(2)}
