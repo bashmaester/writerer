@@ -17,7 +17,7 @@ Everything runs in the browser. Documents never leave your machine except as con
 - **Editable critique group.** Developmental Editor, Line Editor, Target Reader, Rubric Hawk, Skeptic — rename them, rewrite their briefs, add your own.
 - **Free-form chat** with the coach, with the full project context attached.
 - **Any provider**: OpenRouter, Google Gemini, Groq, Cerebras, NVIDIA NIM, GitHub Models, Mistral, OpenAI, Anthropic, Ollama, LM Studio, any OpenAI-compatible endpoint, and fully offline in-browser **WebGPU** models via WebLLM. Responses stream token by token.
-- **Import** PDF, DOCX, Markdown, plain text, HTML, RTF, CSV, JSON — **or paste a URL** to pull in a blog post, style guide or docs page. **Export** any draft or piece of feedback as Markdown, TXT, DOCX, PDF or HTML.
+- **Import** PDF, DOCX, Markdown, plain text, HTML, RTF, CSV, JSON — **paste a URL** to pull in a blog post, style guide or docs page, or **paste raw text** straight from the clipboard as a note. **Export** any draft or piece of feedback as Markdown, TXT, DOCX, PDF or HTML.
 - Auto-saves your project to `localStorage`.
 
 ## Run it
@@ -67,6 +67,14 @@ Imported documents keep a link back to their source, and the model is told the U
 **Privacy:** when a fallback route is used, the URL you're importing passes through that third-party service. Nothing else about your project is sent. If that matters, import sensitive material as a file instead.
 
 Pages behind a login, hard bot-blocking, or pure client-side JavaScript rendering may still fail — the error lists what was tried. Workaround: copy the text and paste it in, or save the page as PDF and upload that.
+
+### Pasting a source or note
+
+**📋 Paste text** opens a note editor for anything you can't upload or fetch: a paywalled or login-walled page, text copied out of a PDF viewer or an email, an editor's feedback, or your own working notes. Hit *Paste from clipboard*, or just Ctrl/Cmd+V into the box.
+
+The title is derived from the first meaningful line if you leave it blank, and you can attach an optional source URL for attribution. Pasting multi-line text into the *URL* field opens this editor automatically, since it clearly isn't a link.
+
+Every reference — uploaded, fetched or pasted — has an **Edit** button that reopens it here, so you can trim boilerplate out of a long import and leave more context budget for what actually matters.
 
 ### Fixing the Ollama CORS error
 

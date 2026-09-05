@@ -15,6 +15,7 @@ import { loadProject, loadSettings, saveProject, saveSettings, uid, defaultProje
 import { fetchUrlAsDoc } from './lib/fetchUrl'
 import Settings from './components/Settings'
 import Markdown from './components/Markdown'
+import PasteNote from './components/PasteNote'
 
 const ROLES: DocRole[] = ['guideline', 'sample', 'template', 'reference', 'draft']
 const MODES: CoachMode[] = ['analyze', 'critique', 'edit', 'evaluate', 'rewrite', 'critique-group']
@@ -31,6 +32,8 @@ export default function App() {
   const [tab, setTab] = useState<'draft' | 'refs'>('draft')
   const [importing, setImporting] = useState(false)
   const [urlStatus, setUrlStatus] = useState('')
+  const [showPaste, setShowPaste] = useState(false)
+  const [editDoc, setEditDoc] = useState<RefDoc | null>(null)
   const abortRef = useRef<AbortController | null>(null)
   const feedRef = useRef<HTMLDivElement>(null)
 
@@ -112,6 +115,27 @@ export default function App() {
     } finally {
       setImporting(false)
     }
+  }
+
+  function savePasted(name: string, text: string, role: DocRole, sourceUrl?: string) {
+    if (role === 'draft') {
+      patchProject({ draft: text })
+      setTab('draft')
+      return
+    }
+    const doc: RefDoc = {
+      id: uid(),
+      name,
+      role,
+      mime: 'text/plain',
+      text,
+      words: wordCount(text),
+      addedAt: Date.now(),
+      include: true,
+      sourceUrl,
+    }
+    patchProject({ docs: [...project.docs, doc] })
+    setTab('refs')
   }
 
   /* ---------------- generation ---------------- */
@@ -279,6 +303,7 @@ export default function App() {
             onUrl={(u, role) => ingestUrl(u, role)}
             busy={importing}
             status={urlStatus}
+            onPaste={() => setShowPaste(true)}
           />
 
           <ul className="doclist">
@@ -333,7 +358,14 @@ export default function App() {
                   <span className="hint">{d.words.toLocaleString()}w</span>
                   <button
                     className="ghost sm"
-                    onClick={() => patchProject({ draft: d.text, ...{} })}
+                    onClick={() => setEditDoc(d)}
+                    title="View or edit this document's text"
+                  >
+                    Edit
+                  </button>
+                  <button
+                    className="ghost sm"
+                    onClick={() => patchProject({ draft: d.text })}
                     title="Load this document into the draft editor"
                   >
                     → draft
@@ -531,6 +563,28 @@ export default function App() {
         </section>
       </main>
 
+      {showPaste && (
+        <PasteNote onSave={savePasted} onClose={() => setShowPaste(false)} />
+      )}
+
+      {editDoc && (
+        <PasteNote
+          key={editDoc.id}
+          doc={editDoc}
+          initialRole={editDoc.role}
+          onSave={(name, text, role, sourceUrl) =>
+            patchProject({
+              docs: project.docs.map((x) =>
+                x.id === editDoc.id
+                  ? { ...x, name, text, role, sourceUrl, words: wordCount(text) }
+                  : x,
+              ),
+            })
+          }
+          onClose={() => setEditDoc(null)}
+        />
+      )}
+
       {showSettings && (
         <Settings settings={settings} onChange={setSettings} onClose={() => setShowSettings(false)} />
       )}
@@ -542,12 +596,14 @@ function DropZone({
   label,
   onFiles,
   onUrl,
+  onPaste,
   busy,
   status,
 }: {
   label: string
   onFiles: (files: FileList | File[], role: DocRole) => void
   onUrl: (url: string, role: DocRole) => void
+  onPaste: () => void
   busy: boolean
   status: string
 }) {
@@ -599,6 +655,9 @@ function DropZone({
             onChange={(e) => e.target.files && onFiles(e.target.files, role)}
           />
         </label>
+        <button className="ghost sm" onClick={onPaste}>
+          📋 Paste text
+        </button>
       </div>
 
       <div className="url-row">
@@ -608,6 +667,14 @@ function DropZone({
           value={url}
           disabled={busy}
           onChange={(e) => setUrl(e.target.value)}
+          onPaste={(e) => {
+            const t = e.clipboardData.getData('text')
+            // Multi-line or clearly non-URL content belongs in the note editor.
+            if (t && (t.includes('\n') || t.trim().length > 400)) {
+              e.preventDefault()
+              onPaste()
+            }
+          }}
           onKeyDown={(e) => {
             if (e.key === 'Enter') {
               e.preventDefault()

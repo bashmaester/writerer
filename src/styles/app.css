@@ -238,3 +238,11 @@ select.mini { width: auto; font-size: 11.5px; padding: 3px 5px; }
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: block;
 }
 .doc-src:hover { color: var(--accent); }
+
+/* paste / note editor */
+.modal.narrow { width: min(620px, 100%); }
+.paste-area {
+  font: 13px/1.6 ui-monospace, SFMono-Regular, Menlo, monospace;
+  min-height: 240px; resize: vertical;
+}
+.modal-body .grid2 { margin: 0; }
