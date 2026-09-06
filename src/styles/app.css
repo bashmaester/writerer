@@ -619,3 +619,51 @@ select.mini option { background: var(--pane); color: var(--ink); }
     flex: 1 1 50%; border-right: 0; border-bottom: 1px solid var(--edge-soft);
   }
 }
+
+/* ================= rich (WYSIWYG) editing ================= */
+.writing-area.preview-rich .rich-wrap { flex: 1; }
+.rich-wrap {
+  overflow-y: auto; background: var(--bg);
+  padding: 26px max(8%, 34px) 40vh;
+}
+.rich-doc { color: var(--ink-strong); line-height: 1.75; }
+.rich-wrap.serif .rich-doc { font-family: var(--serif); }
+.rich-wrap.mono .rich-doc { font-family: var(--mono); }
+
+.rich-empty {
+  color: var(--edge); font-size: 13px; cursor: text; padding: 6px 0;
+}
+
+/* Each block is a quiet editing surface until you touch it. */
+.rich-block {
+  outline: 0; border-radius: 3px;
+  padding: 1px 6px; margin: 0 -6px;
+  transition: background .12s, box-shadow .12s;
+}
+.rich-block:hover { background: var(--bg-sunk); }
+.rich-block:focus {
+  background: var(--bg-sunk);
+  box-shadow: inset 2px 0 0 var(--ink-dim);
+}
+.rich-block > :first-child { margin-top: 0; }
+.rich-block > :last-child { margin-bottom: 0; }
+.rich-block[contenteditable]:empty::before {
+  content: 'Write…'; color: var(--edge);
+}
+
+/* Code/tables/HTML are edited as source, and say so. */
+.rich-literal { position: relative; cursor: pointer; border-radius: 3px; }
+.rich-literal:hover { background: var(--bg-sunk); box-shadow: 0 0 0 1px var(--edge); }
+.rich-literal::after {
+  content: 'edit source'; position: absolute; top: 4px; right: 6px;
+  font: 9.5px var(--mono); color: var(--ink-dim);
+  opacity: 0; transition: opacity .12s; pointer-events: none;
+}
+.rich-literal:hover::after { opacity: 1; }
+.rich-raw {
+  display: block; width: 100%; resize: vertical; min-height: 90px;
+  background: var(--bg-sunk) !important; color: var(--ink) !important;
+  border: 1px solid var(--edge) !important; border-radius: 4px;
+  padding: 10px 12px !important; margin: 1em 0;
+  font: 12px/1.6 var(--mono) !important;
+}

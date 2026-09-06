@@ -20,7 +20,12 @@ Everything runs in the browser. Documents never leave your machine except as con
 - **Import** PDF, DOCX, Markdown, plain text, HTML, RTF, CSV, JSON — **paste a URL** to pull in a blog post, style guide or docs page, or **paste raw text** straight from the clipboard as a note. **Export** any draft or piece of feedback as Markdown, TXT, DOCX, PDF or HTML.
 - **A writing environment, not a form.** Three panels — sources, editor, coach — each independently **toggleable and drag-resizable**. Your layout persists.
 - **Outline navigation** in the left margin, Left-style: Markdown headings listed with per-section word counts, click to jump, current section highlighted as you type.
-- **Live Markdown preview**, on by default: a split view that renders as you type, with scroll sync in both directions. Three modes — `write` (editor only), `split`, `read` (rendered page only) — toggled from the tab bar or `⌘P`.
+- **Live Markdown preview**, on by default: a split view that renders as you type, with scroll sync in both directions. Four modes toggled from the tab bar (`⌘P` cycles write/split):
+  - `write` — Markdown source only
+  - `split` — source + live render (default)
+  - `rich` — **edit directly in the rendered view** (WYSIWYG)
+  - `read` — rendered page, read-only
+- **Rich editing is non-destructive.** Only the block you actually edit is converted back from HTML to Markdown and spliced in by offset; every other byte of your source is preserved exactly — no reformatted bullets, emphasis markers or escaping. Code blocks and tables can't survive an HTML round-trip faithfully, so those open a small source editor instead.
 - **Focus mode** (`⌘\`) strips everything but the page. Plus typewriter scrolling, serif/mono toggle and text size controls.
 - **Agent Skills.** Portable `SKILL.md` procedures the coach *executes* rather than just answers with: it reads your draft, searches your sources, makes targeted edits and verifies them in a loop. Three built in (rubric audit, line-edit pass, structural diagnosis); import or author your own. Tool access is whitelistable per skill and enforced. See **[SKILLS.md](SKILLS.md)**.
 - Auto-saves your project to `localStorage`.

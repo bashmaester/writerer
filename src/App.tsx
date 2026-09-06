@@ -20,6 +20,7 @@ import Markdown from './components/Markdown'
 import PasteNote from './components/PasteNote'
 import Outline from './components/Outline'
 import Preview from './components/Preview'
+import RichEditor from './components/RichEditor'
 import SkillsPanel from './components/Skills'
 import type { Skill } from './lib/skills/types'
 import { loadSkills, saveSkills } from './lib/skills/store'
@@ -120,7 +121,22 @@ export default function App() {
 
   const jumpTo = useCallback((m: Marker) => {
     const el = editorRef.current
-    if (!el) return
+    if (!el) {
+      // Rich mode has no textarea: scroll the rendered heading into view.
+      const heads = document.querySelectorAll<HTMLElement>(
+        '.rich-doc h1, .rich-doc h2, .rich-doc h3, .rich-doc h4, .rich-doc h5, .rich-doc h6',
+      )
+      for (const h of heads) {
+        if (h.textContent?.trim() === m.title.trim()) {
+          h.scrollIntoView({ block: 'center', behavior: 'smooth' })
+          const editable = h.closest<HTMLElement>('.rich-block')
+          editable?.focus()
+          break
+        }
+      }
+      setCaretLine(m.line)
+      return
+    }
     el.focus()
     el.setSelectionRange(m.offset, m.offset)
     // Approximate scroll: put the heading near the top third of the viewport.
@@ -610,13 +626,22 @@ export default function App() {
                 <span className="tb-spacer" />
                 {tab === 'draft' && (
                   <div className="seg" title="Live preview (⌘P)">
-                    {(['off', 'split', 'only'] as const).map((m) => (
+                    {(['off', 'split', 'rich', 'only'] as const).map((m) => (
                       <button
                         key={m}
                         className={'seg-b' + (layout.preview === m ? ' on' : '')}
+                        title={
+                          m === 'off'
+                            ? 'Markdown source only'
+                            : m === 'split'
+                              ? 'Source + live render'
+                              : m === 'rich'
+                                ? 'Edit directly in the rendered view'
+                                : 'Rendered page, read-only'
+                        }
                         onClick={() => set('preview', m)}
                       >
-                        {m === 'off' ? 'write' : m === 'split' ? 'split' : 'read'}
+                        {m === 'off' ? 'write' : m === 'split' ? 'split' : m === 'rich' ? 'rich' : 'read'}
                       </button>
                     ))}
                   </div>
@@ -651,7 +676,7 @@ export default function App() {
 
             {tab === 'draft' ? (
               <div className={'writing-area preview-' + layout.preview}>
-                {layout.preview !== 'only' && (
+                {layout.preview !== 'only' && layout.preview !== 'rich' && (
                   <textarea
                     ref={editorRef}
                     className={'editor' + (layout.serif ? ' serif' : ' mono')}
@@ -674,7 +699,16 @@ export default function App() {
                     }}
                   />
                 )}
-                {layout.preview !== 'off' && (
+                {layout.preview === 'rich' && (
+                  <RichEditor
+                    value={project.draft}
+                    onChange={(next) => patchProject({ draft: next })}
+                    fontSize={layout.fontSize}
+                    serif={layout.serif}
+                    scrollRatio={null}
+                  />
+                )}
+                {(layout.preview === 'split' || layout.preview === 'only') && (
                   <Preview
                     text={project.draft}
                     fontSize={layout.fontSize}

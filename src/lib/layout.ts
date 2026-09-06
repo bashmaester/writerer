@@ -1,7 +1,12 @@
 import { useCallback, useEffect, useState } from 'react'
 
-/** off = editor only, split = editor + live render, only = rendered page. */
-export type PreviewMode = 'off' | 'split' | 'only'
+/**
+ * off   = source editor only
+ * split = source editor + live render
+ * only  = rendered page, read-only
+ * rich  = rendered page, directly editable (WYSIWYG)
+ */
+export type PreviewMode = 'off' | 'split' | 'only' | 'rich'
 
 export interface LayoutState {
   left: boolean

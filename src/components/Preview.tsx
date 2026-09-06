@@ -32,6 +32,13 @@ function isSafeUrl(href: string): boolean {
 const md = new Marked({
   gfm: true,
   breaks: false,
+  // Don't auto-link bare URLs: in rich mode that would silently rewrite the
+  // author's plain text into a Markdown link on the next round trip.
+  tokenizer: {
+    url() {
+      return undefined as any
+    },
+  },
   renderer: {
     link({ href, title, tokens }: any) {
       const text = this.parser.parseInline(tokens)
